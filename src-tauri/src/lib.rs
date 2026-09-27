@@ -1,107 +1,266 @@
-// ============================================
-// lib.rs — Tauri Backend
-// ============================================
+// ============================================================
+// lib.rs — Study-OS Tauri Backend
+// ============================================================
 
-// Ders + soru sayısını storage/lessons.json dosyasına ekler
-#[tauri::command]
-fn add_lesson(subject: String, count: u32) -> Result<String, String> {
-    use std::io::Write;
-    use std::path::Path;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
-    // Proje kökündeki storage klasörü
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("proje kökü bulunamadı")?
-        .join("storage");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+use chrono::Local;
+use serde::{Deserialize, Serialize};
+use tauri::{Manager, State};
 
-    let path = dir.join("lessons.json");
+// ------------------------------------------------------------
+// Sabitler
+// ------------------------------------------------------------
 
-    // Mevcut veriyi oku (yoksa boş şablon)
-    let mut data: serde_json::Value = if path.exists() {
-        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&text).unwrap_or(serde_json::json!({ "daily_logs": [] }))
-    } else {
-        serde_json::json!({ "daily_logs": [] })
-    };
+pub const CURRENT_SCHEMA_VERSION: u32 = 0;
 
-    // NOT: chrono crate'i eklendiğinde gerçek tarih kullanın:
-    // chrono::Local::now().format("%Y-%m-%d").to_string()
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let today = today.as_str();
+const VALID_SUBJECTS: [&str; 4] = ["mat", "fizik", "kimya", "biyo"];
 
-    let logs = data["daily_logs"]
-        .as_array_mut()
-        .ok_or("daily_logs bulunamadı")?;
+const STORE_FILE: &str = "study_os.json";
 
-    // Bugünün kaydını bul veya oluştur
-    match logs.iter_mut().find(|l| l["date"] == today) {
-        Some(log) => {
-            let lessons = log["lessons"]
-                .as_array_mut()
-                .ok_or("lessons bulunamadı")?;
+// ------------------------------------------------------------
+// Veri Modelleri
+// ------------------------------------------------------------
 
-            // Ders zaten varsa sayıyı artır, yoksa yeni ekle
-            match lessons.iter_mut().find(|l| l["subject"] == subject) {
-                Some(l) => {
-                    let current = l["count"].as_u64().unwrap_or(0);
-                    l["count"] = serde_json::json!(current + count as u64);
-                }
-                None => {
-                    lessons.push(serde_json::json!({
-                        "subject": subject,
-                        "count": count
-                    }));
-                }
-            }
-
-            // Toplamı yeniden hesapla
-            let total: u64 = lessons
-                .iter()
-                .map(|l| l["count"].as_u64().unwrap_or(0))
-                .sum();
-            log["total"] = serde_json::json!(total);
-        }
-        None => {
-            logs.push(serde_json::json!({
-                "date": today,
-                "lessons": [{ "subject": subject, "count": count }],
-                "total": count
-            }));
-        }
-    }
-
-    let text = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
-    file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
-
-    Ok(path.display().to_string())
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LessonEntry {
+    pub subject: String,
+    pub count: u32,
 }
 
-// Frontend'in veriyi çekmesi için
-#[tauri::command]
-fn get_lessons() -> Result<serde_json::Value, String> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("proje kökü bulunamadı")?
-        .join("storage")
-        .join("lessons.json");
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyLog {
+    pub date: String,
+    pub total: u32,
+    pub lessons: Vec<LessonEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Store {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub daily_logs: Vec<DailyLog>,
+}
+
+fn default_version() -> u32 {
+    CURRENT_SCHEMA_VERSION
+}
+
+impl Default for Store {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_SCHEMA_VERSION,
+            daily_logs: Vec::new(),
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// Hata Tipi
+// ------------------------------------------------------------
+
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("io hatası: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("json hatası: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("geçersiz ders: {0}")]
+    InvalidSubject(String),
+
+    #[error("geçersiz sayı: {0}")]
+    InvalidCount(String),
+
+    #[error("şema sürümü desteklenmiyor: dosya={file}, beklenen<={expected}")]
+    UnsupportedVersion { file: u32, expected: u32 },
+}
+
+impl Serialize for StoreError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+// ------------------------------------------------------------
+// Depo Yolu
+// ------------------------------------------------------------
+
+fn store_path(app: &tauri::AppHandle) -> Result<PathBuf, StoreError> {
+    let dir = app.path().app_data_dir().map_err(|e| {
+        StoreError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
+
+    if !dir.exists() {
+        fs::create_dir_all(&dir)?;
+    }
+
+    Ok(dir.join(STORE_FILE))
+}
+
+// ------------------------------------------------------------
+// Okuma / Yazma
+// ------------------------------------------------------------
+
+fn read_store(app: &tauri::AppHandle) -> Result<Store, StoreError> {
+    let path = store_path(app)?;
 
     if !path.exists() {
-        return Ok(serde_json::json!({ "daily_logs": [] }));
+        return Ok(Store::default());
     }
 
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let data: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let raw = fs::read_to_string(&path)?;
 
-    Ok(data)
+    if raw.trim().is_empty() {
+        return Ok(Store::default());
+    }
+
+    let store: Store = serde_json::from_str(&raw)?;
+
+    if store.version > CURRENT_SCHEMA_VERSION {
+        return Err(StoreError::UnsupportedVersion {
+            file: store.version,
+            expected: CURRENT_SCHEMA_VERSION,
+        });
+    }
+
+    Ok(store)
 }
+
+fn write_store(app: &tauri::AppHandle, mut store: Store) -> Result<(), StoreError> {
+    store.version = CURRENT_SCHEMA_VERSION;
+    store.daily_logs.sort_by(|a, b| a.date.cmp(&b.date));
+
+    let path = store_path(app)?;
+    let json = serde_json::to_string_pretty(&store)?;
+
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json)?;
+    fs::rename(&tmp, &path)?;
+
+    Ok(())
+}
+
+// ------------------------------------------------------------
+// Yardımcılar
+// ------------------------------------------------------------
+
+fn today_str() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn validate_subject(subject: &str) -> Result<(), StoreError> {
+    if VALID_SUBJECTS.contains(&subject) {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidSubject(subject.to_string()))
+    }
+}
+
+// ------------------------------------------------------------
+// Tauri State
+// ------------------------------------------------------------
+
+pub struct AppState {
+    pub lock: Mutex<()>,
+}
+
+// ------------------------------------------------------------
+// Tauri Komutları  (HER BİRİ SADECE 1 KEZ)
+// ------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_lessons(app: tauri::AppHandle) -> Result<Store, StoreError> {
+    read_store(&app)
+}
+
+#[tauri::command]
+pub fn add_lesson(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    subject: String,
+    count: u32,
+) -> Result<Store, StoreError> {
+    let _guard = state.lock.lock().map_err(|_| {
+        StoreError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "state kilidi zehirlendi",
+        ))
+    })?;
+
+    if count == 0 {
+        return Err(StoreError::InvalidCount(count.to_string()));
+    }
+    validate_subject(&subject)?;
+
+    let mut store = read_store(&app)?;
+    let today = today_str();
+
+    let log = match store.daily_logs.iter_mut().find(|l| l.date == today) {
+        Some(l) => l,
+        None => {
+            store.daily_logs.push(DailyLog {
+                date: today.clone(),
+                total: 0,
+                lessons: Vec::new(),
+            });
+            store.daily_logs.last_mut().unwrap()
+        }
+    };
+
+    match log.lessons.iter_mut().find(|e| e.subject == subject) {
+        Some(entry) => entry.count += count,
+        None => log.lessons.push(LessonEntry {
+            subject: subject.clone(),
+            count,
+        }),
+    }
+
+    log.total = log.lessons.iter().map(|e| e.count).sum();
+
+    log.lessons.sort_by_key(|e| {
+        VALID_SUBJECTS
+            .iter()
+            .position(|s| *s == e.subject)
+            .unwrap_or(usize::MAX)
+    });
+
+    write_store(&app, store.clone())?;
+
+    Ok(store)
+}
+
+// ------------------------------------------------------------
+// Uygulama Girişi
+// ------------------------------------------------------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![add_lesson, get_lessons])
+        .manage(AppState {
+            lock: Mutex::new(()),
+        })
+        .invoke_handler(tauri::generate_handler![get_lessons, add_lesson])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if let Ok(path) = store_path(&handle) {
+                if !path.exists() {
+                    let _ = write_store(&handle, Store::default());
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("Tauri uygulaması başlatılamadı");
 }
