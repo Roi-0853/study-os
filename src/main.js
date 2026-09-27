@@ -89,3 +89,39 @@ if (addlesson) {
     });
   });
 }
+
+// --- SAAT FONKSİYONU ---
+function startClock() {
+  const clockTimeElement = document.querySelector('.clock-time');
+  const clockDateElement = document.querySelector('.clock-date');
+
+  // Eğer HTML'de bu elementler yoksa fonksiyondan çık
+  if (!clockTimeElement || !clockDateElement) return;
+
+  function updateClock() {
+    const now = new Date();
+
+    // Saat formatı (09:32 gibi)
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    clockTimeElement.textContent = `${hours}:${minutes}`;
+
+    // Tarih formatı (sep 3 gibi)
+    const options = { month: 'short', day: 'numeric' };
+    // Türkçe ay isimleri için 'tr-TR' kullanabilirsiniz, 
+    // ama görselde İngilizce kısaltma var (sep)
+    const dateString = now.toLocaleDateString('en-US', options).toLowerCase();
+    clockDateElement.textContent = dateString;
+  }
+
+  // İlk çalıştırma
+  updateClock();
+
+  // Her saniye güncelle (1000ms)
+  setInterval(updateClock, 1000);
+}
+
+// DOM yüklendiğinde saati başlat
+document.addEventListener('DOMContentLoaded', () => {
+  startClock();
+});
