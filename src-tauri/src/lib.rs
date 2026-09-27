@@ -8,7 +8,9 @@ use std::sync::Mutex;
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+
+mod commands;
+use commands::{add_lesson, get_lessons};
 
 // ------------------------------------------------------------
 // Sabitler
@@ -16,9 +18,25 @@ use tauri::{Manager, State};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 0;
 
-const VALID_SUBJECTS: [&str; 4] = ["mat", "fizik", "kimya", "biyo"];
+pub const VALID_SUBJECTS: [&str; 4] = ["mat", "fizik", "kimya", "biyo"];
 
 const STORE_FILE: &str = "study_os.json";
+
+/// Depo (storage) klasörü adı — proje kökü altında `storage/`
+const STORE_DIR: &str = "storage";
+
+/// Depo yolunu geçersiz kılmak için isteğe bağlı ortam değişkeni.
+///   STUDY_OS_STORAGE=C:\Users\Mustafa\Desktop\study-os\storage
+const STORE_DIR_ENV: &str = "STUDY_OS_STORAGE";
+
+/// Proje kökü: `src-tauri` kapsayıcısının bir üst klasörü.
+/// `env!` derleme anında sabitlenir, bu yüzden çalışma zamanında `current_dir()` gerekmez.
+fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
 
 // ------------------------------------------------------------
 // Veri Modelleri
@@ -93,13 +111,13 @@ impl Serialize for StoreError {
 // Depo Yolu
 // ------------------------------------------------------------
 
-fn store_path(app: &tauri::AppHandle) -> Result<PathBuf, StoreError> {
-    let dir = app.path().app_data_dir().map_err(|e| {
-        StoreError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        ))
-    })?;
+pub fn store_path(app: &tauri::AppHandle) -> Result<PathBuf, StoreError> {
+    let _ = app;
+
+    let dir = match std::env::var_os(STORE_DIR_ENV) {
+        Some(custom) if !custom.is_empty() => PathBuf::from(custom),
+        _ => project_root().join(STORE_DIR),
+    };
 
     if !dir.exists() {
         fs::create_dir_all(&dir)?;
@@ -112,7 +130,7 @@ fn store_path(app: &tauri::AppHandle) -> Result<PathBuf, StoreError> {
 // Okuma / Yazma
 // ------------------------------------------------------------
 
-fn read_store(app: &tauri::AppHandle) -> Result<Store, StoreError> {
+pub fn read_store(app: &tauri::AppHandle) -> Result<Store, StoreError> {
     let path = store_path(app)?;
 
     if !path.exists() {
@@ -137,7 +155,7 @@ fn read_store(app: &tauri::AppHandle) -> Result<Store, StoreError> {
     Ok(store)
 }
 
-fn write_store(app: &tauri::AppHandle, mut store: Store) -> Result<(), StoreError> {
+pub fn write_store(app: &tauri::AppHandle, mut store: Store) -> Result<(), StoreError> {
     store.version = CURRENT_SCHEMA_VERSION;
     store.daily_logs.sort_by(|a, b| a.date.cmp(&b.date));
 
@@ -155,11 +173,11 @@ fn write_store(app: &tauri::AppHandle, mut store: Store) -> Result<(), StoreErro
 // Yardımcılar
 // ------------------------------------------------------------
 
-fn today_str() -> String {
+pub fn today_str() -> String {
     Local::now().format("%Y-%m-%d").to_string()
 }
 
-fn validate_subject(subject: &str) -> Result<(), StoreError> {
+pub fn validate_subject(subject: &str) -> Result<(), StoreError> {
     if VALID_SUBJECTS.contains(&subject) {
         Ok(())
     } else {
@@ -173,71 +191,6 @@ fn validate_subject(subject: &str) -> Result<(), StoreError> {
 
 pub struct AppState {
     pub lock: Mutex<()>,
-}
-
-// ------------------------------------------------------------
-// Tauri Komutları  (HER BİRİ SADECE 1 KEZ)
-// ------------------------------------------------------------
-
-#[tauri::command]
-pub fn get_lessons(app: tauri::AppHandle) -> Result<Store, StoreError> {
-    read_store(&app)
-}
-
-#[tauri::command]
-pub fn add_lesson(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    subject: String,
-    count: u32,
-) -> Result<Store, StoreError> {
-    let _guard = state.lock.lock().map_err(|_| {
-        StoreError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "state kilidi zehirlendi",
-        ))
-    })?;
-
-    if count == 0 {
-        return Err(StoreError::InvalidCount(count.to_string()));
-    }
-    validate_subject(&subject)?;
-
-    let mut store = read_store(&app)?;
-    let today = today_str();
-
-    let log = match store.daily_logs.iter_mut().find(|l| l.date == today) {
-        Some(l) => l,
-        None => {
-            store.daily_logs.push(DailyLog {
-                date: today.clone(),
-                total: 0,
-                lessons: Vec::new(),
-            });
-            store.daily_logs.last_mut().unwrap()
-        }
-    };
-
-    match log.lessons.iter_mut().find(|e| e.subject == subject) {
-        Some(entry) => entry.count += count,
-        None => log.lessons.push(LessonEntry {
-            subject: subject.clone(),
-            count,
-        }),
-    }
-
-    log.total = log.lessons.iter().map(|e| e.count).sum();
-
-    log.lessons.sort_by_key(|e| {
-        VALID_SUBJECTS
-            .iter()
-            .position(|s| *s == e.subject)
-            .unwrap_or(usize::MAX)
-    });
-
-    write_store(&app, store.clone())?;
-
-    Ok(store)
 }
 
 // ------------------------------------------------------------
