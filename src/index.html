@@ -5,6 +5,8 @@
     <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Study OS</title>
+    <!-- chart.js (UMD) — node_modules'tan kopyalanan yerel dosya, global window.Chart sağlar -->
+    <script src="/vendor/chart.umd.js" defer></script>
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -14,79 +16,44 @@
       <aside id="sidebar">
         <div class="logo-area">
           <span class="logo-text">Study-OS</span>
-          <span class="logo-sub">(logo)</span>
+          <span class="logo-sub">v0.1</span>
         </div>
         <button class="nav-btn active">Main Page</button>
-        <button class="nav-btn">Focus Place</button>
+        <button id="addlesson" class="add-btn">+ Ders Ekle</button>
       </aside>
 
       <!-- ORTA ALAN -->
       <main id="dashboard">
-        <header class="top-bar">
-          <h1 class="greeting">Hello, Boss</h1>
-        </header>
+        <h1 class="greeting">Hello, Boss</h1>
 
-        <!-- Saat Widget'ı -->
         <div class="clock-widget">
-          <div class="clock-time">09:32</div>
-          <div class="clock-date">sep 3</div>
+          <div class="clock-time">--:--</div>
+          <div class="clock-date">---</div>
         </div>
 
-        <!-- Yapılacaklar Listesi -->
-        <section class="todo-section">
-          <h2>YAPILACAKLAR LİSTESİ</h2>
-          <div class="todo-item">
-            <span class="checkbox">☐</span>
-            <span class="todo-text">Matematik 50 soru</span>
-          </div>
-          <div class="todo-item">
-            <span class="checkbox">☐</span>
-            <span class="todo-text">Fizik 30 soru</span>
-          </div>
-        </section>
-
-        <!-- Grid (Çözülen Sorular) -->
         <section class="grid-section">
-          <div class="grid-container">
-            <!-- Örnek kutucuklar, JS ile dolduracağız -->
-            <div class="grid-cell level-0"></div>
-            <div class="grid-cell level-1"></div>
-            <div class="grid-cell level-2"></div>
-            <div class="grid-cell level-3"></div>
-            <div class="grid-cell level-0"></div>
-            <div class="grid-cell level-1"></div>
-            <div class="grid-cell level-2"></div>
-            <div class="grid-cell level-3"></div>
-            <div class="grid-cell level-0"></div>
-            <div class="grid-cell level-1"></div>
-            <!-- ... 100'e kadar gider -->
-          </div>
+          <div class="grid-container"></div>
         </section>
       </main>
 
-      <!-- SAĞ PANEL (Grafik) -->
+      <!-- SAĞ PANEL -->
       <aside id="right-panel">
         <h3>Çözülen soruların dağılımı</h3>
         <div class="radar-chart">
-          <!-- SVG ile basit bir elmas/radar grafiği -->
-          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-            <!-- Dış Çerçeve (Elmas) -->
-            <polygon points="100,10 190,100 100,190 10,100" fill="none" stroke="#2a4a3a" stroke-width="2"/>
-            <!-- İç Çizgiler (Eksenler) -->
-            <line x1="100" y1="10" x2="100" y2="190" stroke="#2a4a3a" stroke-width="1"/>
-            <line x1="10" y1="100" x2="190" y2="100" stroke="#2a4a3a" stroke-width="1"/>
-            <!-- Veri Alanı (Yeşil) -->
-            <polygon points="100,50 150,100 100,140 60,100" fill="rgba(122, 255, 149, 0.2)" stroke="#7AFF95" stroke-width="2"/>
-            <!-- Merkez Nokta -->
-            <circle cx="100" cy="100" r="3" fill="#7AFF95"/>
-          </svg>
-          <!-- Etiketler -->
-          <span class="label top">n</span>
-          <span class="label right">x</span>
-          <span class="label bottom">z</span>
-          <span class="label left">m</span>
+          <canvas id="radar-canvas"></canvas>
         </div>
       </aside>
     </div>
+
+    <!-- Pencere Şablonu (body'nin içinde olmalı!) -->
+    <template id="window-template">
+      <div class="floating-window">
+        <div class="window-titlebar">
+          <span class="window-title">Pencere</span>
+          <button class="window-close">✕</button>
+        </div>
+        <div class="window-content"></div>
+      </div>
+    </template>
   </body>
 </html>
