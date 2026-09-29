@@ -82,7 +82,7 @@ body {
 .add-btn {
   margin-top: auto;
   background: transparent;
-  border: 1px dashed var(--text-main);
+  border: 1px solid var(--text-main);
   color: var(--text-main);
   padding: 12px;
   border-radius: 8px;

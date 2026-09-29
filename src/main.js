@@ -17,16 +17,16 @@ function setupAddLesson() {
         <form id="lesson-form">
           <label>Ders
             <select name="subject">
-              <option value="mat">Matematik</option>
-              <option value="fizik">Fizik</option>
-              <option value="kimya">Kimya</option>
-              <option value="biyo">Biyoloji</option>
+              <option value="mat">Math</option>
+              <option value="fizik">physics</option>
+              <option value="kimya">chemistry</option>
+              <option value="biyo">biology</option>
             </select>
           </label>
-          <label>Soru Sayısı
+          <label>number of questions
             <input name="count" type="number" min="1" value="10">
           </label>
-          <button type="submit">Ekle</button>
+          <button type="submit">Add</button>
         </form>
       `,
     });
