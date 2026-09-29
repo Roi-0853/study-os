@@ -1,6 +1,5 @@
-// ============================================
-// main.js — Giriş Noktası
-// ============================================
+
+// main.js 
 
 import { startClock } from "./time.js";
 import { openWindow, invokeCmd } from "./utils.js";

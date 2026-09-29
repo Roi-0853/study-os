@@ -1,16 +1,12 @@
-// ============================================
-// graphics.js — Grid + Radar (Chart.js)
-// ============================================
+// graphics.js — Grid + Radar
 
-// Chart.js: /vendor/chart.umd.js dosyası npm postinstall ile node_modules/chart.js/dist/chart.umd.js'ten üretilir
-// ve index.html'de <script src="/vendor/chart.umd.js"> ile yüklenir (global window.Chart). CDN yok, bare import yok.
 const Chart = window.Chart;
 
 import { invokeCmd, getLastNDays } from "./utils.js";
 
 let radarChart = null;
 
-// ---------- GRID ----------
+//GRID
 export async function renderGrid() {
   const container = document.querySelector(".grid-container");
   if (!container) return;
@@ -37,7 +33,7 @@ export async function renderGrid() {
   });
 }
 
-// ---------- RADAR ----------
+//RADAR
 export async function renderRadar() {
   const canvas = document.querySelector("#radar-canvas");
   if (!canvas) return;
@@ -94,7 +90,7 @@ export async function renderRadar() {
   }
 }
 
-// ---------- YENİLE ----------
+//YENİLE
 export async function refreshDashboard() {
   await Promise.all([renderGrid(), renderRadar()]);
 }

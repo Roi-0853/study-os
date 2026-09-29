@@ -1,6 +1,5 @@
-// ============================================
 // time.js — Saat
-// ============================================
+
 
 export function startClock() {
   const clockTime = document.querySelector(".clock-time");

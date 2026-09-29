@@ -1,6 +1,4 @@
-// ============================================================
 // lib.rs — Study-OS Tauri Backend
-// ============================================================
 
 use std::fs;
 use std::path::PathBuf;
@@ -12,11 +10,9 @@ use serde::{Deserialize, Serialize};
 mod commands;
 use commands::{add_lesson, get_lessons};
 
-// ------------------------------------------------------------
 // Sabitler
-// ------------------------------------------------------------
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 0;
+pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 pub const VALID_SUBJECTS: [&str; 4] = ["mat", "fizik", "kimya", "biyo"];
 

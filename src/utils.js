@@ -1,6 +1,5 @@
-// ============================================
+
 // utils.js — Yardımcı Fonksiyonlar
-// ============================================
 
 export function getLastNDays(n) {
   const days = [];
