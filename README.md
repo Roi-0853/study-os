@@ -29,7 +29,7 @@
 - **Styling:** Custom CSS 
 
 ### Data & Storage
-- **Local Storage:** [Tauri Store Plugin](https://github.com/tauri-apps/tauri-plugin-store) *(veya LocalStorage / SQLite)*
+- **Local Storage:** : JSON
 ---
 
 ##  Getting Started
